@@ -29,12 +29,16 @@
         </dependency>
         
         
-        <!-- Driver de base de datos (H2 para desarrollo) -->
-      <dependency>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-data-mongodb-reactive</artifactId>
-	</dependency>
-			
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb-reactive</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+		<dependency>
+            <groupId>io.projectreactor.kafka</groupId>
+            <artifactId>reactor-kafka</artifactId>
+            <version>1.3.22</version> <!-- o la versión compatible con tu Spring Boot -->
+        </dependency>
         
         <!-- Lombok -->
         <dependency>

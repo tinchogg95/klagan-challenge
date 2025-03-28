@@ -1,64 +1,53 @@
 package com.kLagan.challenge.infraestructure.api;
 
 import com.kLagan.challenge.application.service.AssetService;
-import com.kLagan.challenge.infraestructure.api.dto.AssetResponse;
-import com.kLagan.challenge.infraestructure.api.dto.PageResponse;
+import com.kLagan.challenge.domain.model.Asset;
+import com.kLagan.challenge.infraestructure.api.dto.AssetFileUploadRequest;
+import com.kLagan.challenge.infraestructure.api.dto.AssetFileUploadResponse;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.codec.multipart.FilePart;
-import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
 import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.UUID;
+import java.util.List;
 
 @RestController
-@RequestMapping("/api/assets")
-@RequiredArgsConstructor
+@RequestMapping("/api/mgmt/1/assets")
 public class AssetController {
-
     private final AssetService assetService;
 
-    @PostMapping(consumes = "multipart/form-data")
-    @ResponseStatus(HttpStatus.ACCEPTED)
-    public Mono<ResponseEntity<AssetResponse>> uploadAsset(
-            @RequestPart("file") FilePart file,
-            @RequestParam String uploadedBy,
-            @RequestParam(required = false) Map<String, String> metadata) {
-        
-        return assetService.uploadAsset(file, uploadedBy, metadata)
-                .map(asset -> ResponseEntity
-                        .accepted()
-                        .body(AssetResponse.fromDomain(asset)))
-                .onErrorResume(e -> Mono.just(ResponseEntity
-                        .badRequest()
-                        .build()));
+    public AssetController(AssetService assetService) {
+        this.assetService = assetService;
     }
 
-    @GetMapping("/{id}")
-    public Mono<ResponseEntity<AssetResponse>> getAsset(@PathVariable UUID id) {
-        return assetService.getAssetById(id)
-                .map(asset -> ResponseEntity.ok(AssetResponse.fromDomain(asset)))
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+    @PostMapping("/actions/upload")
+    public Mono<ResponseEntity<AssetFileUploadResponse>> uploadAssetFile(
+            @RequestBody AssetFileUploadRequest request) {
+        return assetService.handleUpload(request)
+            .map(assetId -> ResponseEntity.accepted()
+                .body(new AssetFileUploadResponse(assetId)));
     }
 
     @GetMapping
-    public Mono<ResponseEntity<PageResponse<AssetResponse>>> searchAssets(
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) LocalDateTime startDate,
-            @RequestParam(required = false) LocalDateTime endDate,
-            @PageableDefault(size = 20) Pageable pageable) {
+    public Mono<ResponseEntity<Flux<Asset>>> getAssetsByFilter(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime uploadDateStart,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime uploadDateEnd,
+            @RequestParam(required = false) String filename,
+            @RequestParam(required = false) String filetype,
+            @RequestParam(required = false, defaultValue = "ASC") String sortDirection) {
         
-        return assetService.searchAssets(name, type, startDate, endDate, pageable)
-                .map(page -> ResponseEntity.ok(PageResponse.fromPage(page, AssetResponse::fromDomain)))
-                .onErrorResume(e -> Mono.just(ResponseEntity
-                        .badRequest()
-                        .build()));
+        Flux<Asset> assets = assetService.searchAssets(
+            uploadDateStart,
+            uploadDateEnd,
+            filename,
+            filetype,
+            sortDirection
+        );
+        
+        return Mono.just(ResponseEntity.ok(assets));
     }
 }

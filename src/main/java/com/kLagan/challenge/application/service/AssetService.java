@@ -1,102 +1,86 @@
-// src/main/java/com/kLagan/challenge/application/service/AssetService.java
 package com.kLagan.challenge.application.service;
 
 import com.kLagan.challenge.application.port.AssetPublisher;
 import com.kLagan.challenge.application.port.AssetRepository;
 import com.kLagan.challenge.domain.model.Asset;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.codec.multipart.FilePart;
-import org.springframework.stereotype.Service;
+import com.kLagan.challenge.infraestructure.api.dto.AssetFileUploadRequest;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.nio.ByteBuffer;
+import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.Base64;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class AssetService {
-    private final AssetRepository assetRepository;
-    private final AssetPublisher assetPublisher;
+    private static final String BASE64_PREFIX = "data:image/jpeg;base64,";
+    private static final String ASSET_STATUS_UPLOADED = "UPLOADED";
+    
+    private final AssetRepository repository;
+    private final AssetPublisher publisher;
 
-    public Mono<Asset> uploadAsset(FilePart filePart, String uploadedBy, Map<String, String> metadata) {
-        return filePart.content()
-            .collectList()
-            .flatMap(dataBuffers -> {
-                // Calcular tamaño del archivo
-                long size = dataBuffers.stream()
-                    .mapToInt(data -> data.asByteBuffer().remaining())
-                    .sum();
+    public AssetService(AssetRepository repository, AssetPublisher publisher) {
+        this.repository = repository;
+        this.publisher = publisher;
+    }
 
-                // Manejar metadata nula
-                Map<String, String> finalMetadata = Optional.ofNullable(metadata).orElse(new HashMap<>());
-
-                // Crear nuevo Asset
-                Asset asset = Asset.builder()
-                    .id(UUID.randomUUID())
-                    .name(filePart.filename())
-                    .type(filePart.headers().getContentType().toString())
-                    .size(size)
-                    .uploadStatus("PENDING")
-                    .uploadedAt(LocalDateTime.now())
-                    .uploadedBy(uploadedBy)
-                    .metadata(finalMetadata)
-                    .build();
-
-                // Guardar y publicar
-                return assetRepository.save(asset)
-                    .flatMap(savedAsset -> 
-                        assetPublisher.publishAsset(savedAsset)
-                            .thenReturn(savedAsset)
-                    );
+    public Mono<String> handleUpload(AssetFileUploadRequest request) {
+        return Mono.fromCallable(() -> {
+                String cleanBase64 = cleanBase64String(request.getEncodedFile());
+                return Base64.getDecoder().decode(cleanBase64);
+            })
+            .onErrorMap(e -> new IllegalArgumentException("Invalid Base64 content", e))
+            .flatMap(fileContent -> {
+                String assetId = UUID.randomUUID().toString();
+                
+                Asset asset = new Asset();
+                asset.setId(assetId);
+                asset.setFilename(request.getFilename());
+                asset.setContentType(request.getContentType());
+                asset.setSize(fileContent.length);
+                asset.setUploadDate(LocalDateTime.now());
+                asset.setStatus(ASSET_STATUS_UPLOADED);
+                
+                return repository.save(asset)
+                    .doOnSuccess(savedAsset -> publisher.publishAssetAsync(assetId, fileContent))
+                    .thenReturn(assetId);
             });
     }
 
-    public Mono<Asset> getAssetById(UUID id) {
-        return assetRepository.findById(id);
+    public Flux<Asset> searchAssets(
+        LocalDateTime uploadDateStart,
+        LocalDateTime uploadDateEnd,
+        String filename,
+        String filetype,
+        String sortDirection) {
+        
+        return repository.search(
+            uploadDateStart,
+            uploadDateEnd,
+            filename,
+            filetype,
+            sortDirection
+        );
     }
 
-    public Mono<Page<Asset>> searchAssets(
-        String name, 
-        String type, 
-        LocalDateTime startDate, 
-        LocalDateTime endDate, 
-        Pageable pageable
-    ) {
-        // Procesar parámetros opcionales
-        String processedName = Optional.ofNullable(name).orElse("");
-        String processedType = Optional.ofNullable(type).orElse("");
-        LocalDateTime processedStartDate = Optional.ofNullable(startDate).orElse(LocalDateTime.MIN);
-        LocalDateTime processedEndDate = Optional.ofNullable(endDate).orElse(LocalDateTime.MAX);
-
-        // Obtener assets paginados
-        Flux<Asset> assetsFlux = assetRepository
-            .findByNameContainingIgnoreCaseAndTypeAndUploadedAtBetween(
-                processedName,
-                processedType,
-                processedStartDate,
-                processedEndDate,
-                pageable
-            );
-
-        // Obtener conteo total
-        Mono<Long> countMono = assetRepository
-            .countByNameContainingIgnoreCaseAndTypeAndUploadedAtBetween(
-                processedName,
-                processedType,
-                processedStartDate,
-                processedEndDate
-            );
-
-        // Combinar resultados
-        return Mono.zip(assetsFlux.collectList(), countMono)
-            .map(tuple -> new PageImpl<>(tuple.getT1(), pageable, tuple.getT2()));
+    private String cleanBase64String(String encodedFile) {
+        if (encodedFile == null || encodedFile.isBlank()) {
+            throw new IllegalArgumentException("Base64 content cannot be empty");
+        }
+        
+        // Remove data URL prefix if present
+        String clean = encodedFile.startsWith(BASE64_PREFIX) 
+            ? encodedFile.substring(BASE64_PREFIX.length())
+            : encodedFile;
+            
+        // Remove any whitespace
+        clean = clean.replaceAll("\\s", "");
+        
+        // Ensure proper padding
+        while (clean.length() % 4 != 0) {
+            clean += "=";
+        }
+        
+        return clean;
     }
 }

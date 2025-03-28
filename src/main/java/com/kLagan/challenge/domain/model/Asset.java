@@ -6,8 +6,6 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.UUID;
 
 @Data
 @Builder
@@ -16,13 +14,11 @@ import java.util.UUID;
 @Document(collection = "assets")
 public class Asset {
     @Id
-    private UUID id;
-    private String name;
-    private String type;
-    private Long size;
-    private String uploadStatus;
-    private String location;
-    private LocalDateTime uploadedAt;
-    private String uploadedBy;
-    private Map<String, String> metadata;
+    private String id;
+    private String filename;
+    private String contentType;
+    private String url;
+    private long size;
+    private LocalDateTime uploadDate;
+    private String status; // "UPLOADED", "PROCESSING", "PUBLISHED", "FAILED"
 }
