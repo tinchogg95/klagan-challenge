@@ -13,8 +13,7 @@ public class AssetUploadConsumer {
     public AssetUploadConsumer(AssetProcessingService processingService) {
         this.processingService = processingService;
     }
-
-    @KafkaListener(topics = "asset-uploads", groupId = "asset-upload-group")
+    @KafkaListener(topics = "asset-uploads")
     public void consume(AssetUploadEvent event) {
         try {
             if (event.fileContent() != null) {

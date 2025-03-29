@@ -14,6 +14,7 @@ public interface AssetRepository {
         LocalDateTime uploadDateEnd,
         String filename,
         String filetype,
+        String status,
         String sortDirection
     );
     Mono<Asset> findById(String id);

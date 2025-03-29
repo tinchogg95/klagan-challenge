@@ -1,7 +1,13 @@
 package com.kLagan.challenge.infraestructure.persistence;
 
 import com.kLagan.challenge.domain.model.Asset;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.kLagan.challenge.application.port.AssetRepository;
+
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -14,6 +20,8 @@ import java.time.LocalDateTime;
 
 @Repository
 public class MongoAssetRepository implements AssetRepository {
+
+    private static final Logger logger = LoggerFactory.getLogger(MongoAssetRepository.class);
 
     private final ReactiveMongoTemplate mongoTemplate;
 
@@ -32,31 +40,47 @@ public class MongoAssetRepository implements AssetRepository {
             LocalDateTime uploadDateEnd,
             String filename,
             String filetype,
+            String status,
             String sortDirection) {
         
         Query query = new Query();
+        Criteria criteria = new Criteria();
+
+        if (status != null && !status.isBlank()) {
+            criteria.and("status").is(status);
+        }
         
         if (filename != null && !filename.isBlank()) {
-            query.addCriteria(Criteria.where("filename").regex(filename, "i"));
+            criteria.and("filename").regex(filename, "i");
         }
         
         if (filetype != null && !filetype.isBlank()) {
-            query.addCriteria(Criteria.where("contentType").is(filetype));
+            criteria.and("contentType").is(filetype);
         }
         
-        if (uploadDateStart != null && uploadDateEnd != null) {
-            query.addCriteria(Criteria.where("uploadDate")
-                    .gte(uploadDateStart)
-                    .lte(uploadDateEnd));
+        
+        if (uploadDateStart != null || uploadDateEnd != null) {
+            Criteria dateCriteria = new Criteria("uploadDate");
+            if (uploadDateStart != null) {
+                dateCriteria.gte(uploadDateStart);
+            }
+            if (uploadDateEnd != null) {
+                dateCriteria.lte(uploadDateEnd);
+            }
+            criteria.andOperator(dateCriteria);
         }
         
+        query.addCriteria(criteria);
+        
+        
+        Sort.Direction direction = Sort.Direction.ASC;
         if ("DESC".equalsIgnoreCase(sortDirection)) {
-            query.with(org.springframework.data.domain.Sort.by(
-                org.springframework.data.domain.Sort.Direction.DESC, "uploadDate"));
-        } else {
-            query.with(org.springframework.data.domain.Sort.by(
-                org.springframework.data.domain.Sort.Direction.ASC, "uploadDate"));
+            direction = Sort.Direction.DESC;
         }
+        query.with(Sort.by(direction, "uploadDate"));
+        
+        
+        logger.debug("Executing query: {}", query);
         
         return mongoTemplate.find(query, Asset.class);
     }
