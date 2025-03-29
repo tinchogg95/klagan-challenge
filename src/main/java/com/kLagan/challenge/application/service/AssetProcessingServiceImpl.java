@@ -2,11 +2,15 @@ package com.kLagan.challenge.application.service;
 
 import com.kLagan.challenge.application.port.AssetProcessingService;
 import com.kLagan.challenge.application.port.AssetRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 @Service
 public class AssetProcessingServiceImpl implements AssetProcessingService {
 
+    private static final Logger log = LoggerFactory.getLogger(AssetProcessingServiceImpl.class);
     private final AssetRepository assetRepository;
 
     public AssetProcessingServiceImpl(AssetRepository assetRepository) {
@@ -15,23 +19,60 @@ public class AssetProcessingServiceImpl implements AssetProcessingService {
 
     @Override
     public void processUploadedAsset(String assetId, byte[] fileContent) {
-        // 1. Aquí iría la lógica para subir el archivo al sistema final
-        // (ej: Amazon S3, Google Cloud Storage, etc.)
-        System.out.println("Procesando asset: " + assetId);
+        log.info("Iniciando procesamiento del asset: {}", assetId);
         
-        // 2. Actualizar el estado en MongoDB
-        assetRepository.updateStatus(assetId, "PROCESSED")
-            .doOnSuccess(__ -> System.out.println("Estado actualizado a PROCESSED"))
-            .subscribe();
-        
-        // 3. Opcional: Guardar la URL del archivo en el sistema final
-        // assetRepository.updateUrl(assetId, "https://storage.example.com/"+assetId);
+        //Try to upload asset 
+        uploadToStorage(assetId, fileContent)
+            .flatMap(storageUrl -> {
+                //PROCESSED CASE
+                log.info("Subida exitosa para asset {}, URL: {}", assetId, storageUrl);
+                return assetRepository.updateStatus(assetId, "PROCESSED")
+                    .then(assetRepository.updateUrl(assetId, storageUrl));
+            })
+            .onErrorResume(e -> {
+                //FAILED CASE
+                String errorMsg = "Error en subida a almacenamiento: " + e.getMessage();
+                log.error("Error procesando asset {}: {}", assetId, errorMsg, e);
+                return assetRepository.updateStatus(assetId, "FAILED: " + errorMsg);
+            })
+            .subscribe(
+                result -> log.info("Procesamiento completado para asset {}", assetId),
+                error -> log.error("Error inesperado en el flujo de procesamiento", error)
+            );
     }
 
     @Override
     public void markAsFailed(String assetId, String errorMessage) {
-        System.err.println("Error procesando asset " + assetId + ": " + errorMessage);
+        log.error("Marcando asset {} como fallido: {}", assetId, errorMessage);
         assetRepository.updateStatus(assetId, "FAILED: " + errorMessage)
-            .subscribe();
+            .subscribe(
+                result -> log.info("Estado actualizado a FAILED para asset {}", assetId),
+                error -> log.error("Error al actualizar estado a FAILED", error)
+            );
+    }
+
+    /**
+     * Método que simula la subida a almacenamiento en la nube
+     * (Reemplazar con la implementación real para AWS S3, Google Cloud Storage, etc.)
+     */
+    private Mono<String> uploadToStorage(String assetId, byte[] fileContent) {
+        return Mono.fromCallable(() -> {
+            //simulating an error
+            if (fileContent.length > 10_000_000) { 
+                throw new RuntimeException("Tamaño de archivo excede el límite permitido");
+            }
+
+            
+            //simulating upload
+            log.debug("Subiendo archivo {} ({} bytes) a almacenamiento...", assetId, fileContent.length);
+            try {
+                Thread.sleep(5_000); // simulating asyncronous uploading
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); 
+                System.err.println("Sleep interrumpido");
+            }
+            //return simulated url
+            return "https://storage.example.com/files/" + assetId;
+        });
     }
 }
