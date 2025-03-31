@@ -7,6 +7,18 @@ public record AssetUploadEvent(
     byte[] fileContent,
     String fileLocation
 ) {
+    public String getAssetId() {
+        return assetId;
+    }
+
+    public byte[] getFileContent() {
+        return fileContent;
+    }
+
+    public String getFileLocation() {
+        return fileLocation;
+    }
+
     public AssetUploadEvent(String assetId, byte[] fileContent) {
         this(assetId, fileContent, null);
     }
