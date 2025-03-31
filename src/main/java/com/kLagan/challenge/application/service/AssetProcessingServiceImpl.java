@@ -2,6 +2,7 @@ package com.kLagan.challenge.application.service;
 
 import com.kLagan.challenge.application.port.AssetProcessingService;
 import com.kLagan.challenge.application.port.AssetRepository;
+import com.kLagan.challenge.application.util.AssetConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,60 +20,49 @@ public class AssetProcessingServiceImpl implements AssetProcessingService {
 
     @Override
     public void processUploadedAsset(String assetId, byte[] fileContent) {
-        log.info("Iniciando procesamiento del asset: {}", assetId);
-        
-        //Try to upload asset 
+        log.info(AssetConstants.LOG_START_PROCESSING, assetId);
+
         uploadToStorage(assetId, fileContent)
             .flatMap(storageUrl -> {
-                //PROCESSED CASE
-                log.info("Subida exitosa para asset {}, URL: {}", assetId, storageUrl);
-                return assetRepository.updateStatus(assetId, "PROCESSED")
+                log.info(AssetConstants.LOG_UPLOAD_SUCCESS, assetId, storageUrl);
+                return assetRepository.updateStatus(assetId, AssetConstants.STATUS_PROCESSED)
                     .then(assetRepository.updateUrl(assetId, storageUrl));
             })
             .onErrorResume(e -> {
-                //FAILED CASE
-                String errorMsg = "Error en subida a almacenamiento: " + e.getMessage();
-                log.error("Error procesando asset {}: {}", assetId, errorMsg, e);
-                return assetRepository.updateStatus(assetId, "FAILED: " + errorMsg);
+                String errorMsg = AssetConstants.ERROR_UPLOAD_FAILURE + e.getMessage();
+                log.error(AssetConstants.LOG_PROCESSING_ERROR, assetId, errorMsg, e);
+                return assetRepository.updateStatus(assetId, AssetConstants.STATUS_FAILED_PREFIX + errorMsg);
             })
             .subscribe(
-                result -> log.info("Procesamiento completado para asset {}", assetId),
-                error -> log.error("Error inesperado en el flujo de procesamiento", error)
+                result -> log.info(AssetConstants.LOG_PROCESSING_COMPLETED, assetId),
+                error -> log.error(AssetConstants.ERROR_UNEXPECTED, error)
             );
     }
 
     @Override
     public void markAsFailed(String assetId, String errorMessage) {
-        log.error("Marcando asset {} como fallido: {}", assetId, errorMessage);
-        assetRepository.updateStatus(assetId, "FAILED: " + errorMessage)
+        log.error(AssetConstants.LOG_MARK_FAILED, assetId, errorMessage);
+        assetRepository.updateStatus(assetId, AssetConstants.STATUS_FAILED_PREFIX + errorMessage)
             .subscribe(
-                result -> log.info("Estado actualizado a FAILED para asset {}", assetId),
-                error -> log.error("Error al actualizar estado a FAILED", error)
+                result -> log.info(AssetConstants.LOG_UPDATE_FAILED_STATUS, assetId),
+                error -> log.error(AssetConstants.LOG_UPDATE_FAILED_ERROR, error)
             );
     }
 
-    /**
-     * Método que simula la subida a almacenamiento en la nube
-     * (Reemplazar con la implementación real para AWS S3, Google Cloud Storage, etc.)
-     */
     private Mono<String> uploadToStorage(String assetId, byte[] fileContent) {
         return Mono.fromCallable(() -> {
-            //simulating an error
             if (fileContent.length > 10_000_000) { 
-                throw new RuntimeException("Tamaño de archivo excede el límite permitido");
+                throw new RuntimeException(AssetConstants.ERROR_FILE_TOO_LARGE);
             }
 
-            
-            //simulating upload
-            log.debug("Subiendo archivo {} ({} bytes) a almacenamiento...", assetId, fileContent.length);
+            log.debug(AssetConstants.LOG_UPLOADING_FILE, assetId, fileContent.length);
             try {
-                Thread.sleep(5_000); // simulating asyncronous uploading
+                Thread.sleep(5_000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt(); 
                 System.err.println("Sleep interrumpido");
             }
-            //return simulated url
-            return "https://storage.example.com/files/" + assetId;
+            return AssetConstants.STORAGE_URL_BASE + assetId;
         });
     }
 }

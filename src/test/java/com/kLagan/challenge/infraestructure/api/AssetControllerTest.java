@@ -19,7 +19,18 @@ import static org.mockito.Mockito.when;
 @WebFluxTest(AssetController.class) // Habilita contexto WebFlux y auto-configura WebTestClient
 public class AssetControllerTest {
 
+    // Constants for URLs, paths, and mock data
     private static final String BASE_URL = "/api/mgmt/1/assets";
+    private static final String UPLOAD_ACTION_URL = BASE_URL + "/actions/upload";
+    private static final String MOCK_ASSET_ID = "test-123";
+    private static final String FILENAME_KEY = "filename";
+    private static final String STATUS_KEY = "status";
+    private static final String ERROR_MESSAGE_KEY = "errorMessage";
+    private static final String MOCK_FILENAME = "test.pdf";
+    private static final String MOCK_STATUS = "PROCESSED";
+    private static final String MOCK_JSON_BODY = "{\"filename\":\"test.pdf\"}";
+    private static final String MOCK_EMPTY_JSON_BODY = "{}";
+    private static final String ERROR_MESSAGE = "Error de prueba";
 
     @Autowired
     private WebTestClient webTestClient; // Inyectado automáticamente
@@ -29,20 +40,19 @@ public class AssetControllerTest {
 
     @Test
     void uploadAssetFile_ShouldReturnAccepted() {
-        //setup mock
-        String mockAssetId = "test-123";
+        // Setup mock
         when(assetService.handleUpload(any(AssetFileUploadRequest.class)))
-            .thenReturn(Mono.just(mockAssetId));
+            .thenReturn(Mono.just(MOCK_ASSET_ID));
     
-        //http request and validations
+        // HTTP request and validations
         webTestClient.post()
-            .uri(BASE_URL + "/actions/upload")
+            .uri(UPLOAD_ACTION_URL)
             .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("{\"filename\":\"test.pdf\"}") 
+            .bodyValue(MOCK_JSON_BODY) 
             .exchange()
             .expectStatus().isAccepted()
             .expectBody()
-            .jsonPath("$.id").isEqualTo(mockAssetId); 
+            .jsonPath("$.id").isEqualTo(MOCK_ASSET_ID); 
     }
 
     @Test
@@ -53,8 +63,8 @@ public class AssetControllerTest {
         webTestClient.get()
             .uri(uriBuilder -> uriBuilder
                 .path(BASE_URL)
-                .queryParam("filename", "test.pdf")
-                .queryParam("status", "PROCESSED")
+                .queryParam(FILENAME_KEY, MOCK_FILENAME)
+                .queryParam(STATUS_KEY, MOCK_STATUS)
                 .build())
             .exchange()
             .expectStatus().isOk()
@@ -64,12 +74,12 @@ public class AssetControllerTest {
     @Test
     void uploadAssetFile_ShouldReturnErrorWhenServiceFails() {
         when(assetService.handleUpload(any()))
-            .thenReturn(Mono.error(new RuntimeException("Error de prueba")));
+            .thenReturn(Mono.error(new RuntimeException(ERROR_MESSAGE)));
 
         webTestClient.post()
-            .uri(BASE_URL + "/actions/upload")
+            .uri(UPLOAD_ACTION_URL)
             .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("{}")
+            .bodyValue(MOCK_EMPTY_JSON_BODY)
             .exchange()
             .expectStatus().is5xxServerError()
             .expectBody()
